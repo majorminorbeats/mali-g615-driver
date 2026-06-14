@@ -1,0 +1,54 @@
+From: Mali G615 Open Driver Project
+Subject: [PATCH 3/3] panvk: Android ICD packaging and meta.json
+
+Adds Android ICD metadata, library naming, and the constructor/destructor
+hooks that let Eden's driver loader pick up the .so correctly.
+Same structure as Turnip (libvulkan_freedreno.so / meta.json).
+
+---
+ src/panfrost/vulkan/meson.build         |  10 +
+ src/panfrost/vulkan/panvk_entrypoints.c |   8 +
+
+diff --git a/src/panfrost/vulkan/meson.build b/src/panfrost/vulkan/meson.build
+index 0000000..8888888 100644
+--- a/src/panfrost/vulkan/meson.build
++++ b/src/panfrost/vulkan/meson.build
+@@ -60,6 +60,16 @@ libvulkan_panfrost = shared_library(
+   link_with : [
+     libpan_kmod,
+   ],
++  # Android: export only the standard ICD symbols
++  link_args : [
++    '-Wl,--version-script=' + meson.current_source_dir() + '/panvk_android.map',
++    '-Wl,-soname,libvulkan_g615.so',
++    '-landroid',
++    '-llog',
++  ],
+   install : true,
+ )
+
++# Generate meta.json for Eden driver picker
++configure_file(
++  input  : 'meta.json.in',
++  output : 'meta.json',
++  configuration : {
++    'DRIVER_NAME'    : 'Mali G615 MC6 Open Driver',
++    'DRIVER_VERSION' : '1.0.0',
++    'LIBRARY_NAME'   : 'libvulkan_g615.so',
++  }
++)
+
+diff --git a/src/panfrost/vulkan/panvk_entrypoints.c b/src/panfrost/vulkan/panvk_entrypoints.c
+index 0000000..9999999 100644
+--- a/src/panfrost/vulkan/panvk_entrypoints.c
++++ b/src/panfrost/vulkan/panvk_entrypoints.c
+@@ -1,3 +1,11 @@
++#include <android/log.h>
++
++__attribute__((constructor))
++static void panvk_g615_load(void) {
++   __android_log_print(ANDROID_LOG_INFO, "MaliG615-VK",
++      "Mali G615 MC6 Vulkan driver loaded (panvk/kbase)");
++}
++
+ /* existing panvk entrypoints ... */
