@@ -1,0 +1,91 @@
+name: Build Mali G615 Vulkan Driver for Android
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:   # lets you trigger manually from GitHub website
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y python3 python3-pip cmake ninja-build meson pkg-config git wget unzip libxml2-dev byacc flex glslang-tools llvm-15 llvm-15-dev clang-15 libclang-15-dev spirv-tools libdrm-dev zlib1g-dev libexpat1-dev libzstd-dev
+        pip3 install mako ply pyyaml
+
+    - name: Setup Android NDK
+      uses: nttld/setup-ndk@v1
+      id: setup-ndk
+      with:
+        ndk-version: r26d
+        add-to-path: true
+
+    - name: Clone Mesa
+      run: |
+        git clone --depth=1 --branch mesa-24.1.0 https://gitlab.freedesktop.org/mesa/mesa.git mesa
+
+    - name: Patch Mesa
+      run: |
+        mkdir -p mesa/src/panfrost/kmod/kbase
+        cp android/pan_kmod_mali_kbase.h mesa/src/panfrost/kmod/kbase/
+        cp android/pan_kmod_mali_kbase.c mesa/src/panfrost/kmod/kbase/
+        cp android/mali_kbase_iface.h mesa/src/panfrost/kmod/kbase/
+        cp android/mali_kbase_device.h mesa/src/panfrost/kmod/kbase/
+        cp android/mali_kbase_device.c mesa/src/panfrost/kmod/kbase/
+        cp mesa_src/pan_g615_props.c mesa/src/panfrost/lib/
+        cp mesa_src/pan_g615_shader.c mesa/src/panfrost/compiler/
+        cd mesa
+        git apply ../patches/0001-panfrost-add-mali-kbase-backend.patch || true
+        git apply ../patches/0002-panfrost-add-g615-gpu-support.patch || true
+        git apply ../patches/0003-panvk-android-packaging.patch || true
+
+    - name: Configure Mesa
+      env:
+        NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
+      run: |
+        cd mesa
+        cat > ../android_cross.ini << 'EOF'
+        [host_machine]
+        system = 'android'
+        cpu_family = 'aarch64'
+        cpu = 'cortex-a720'
+        endian = 'little'
+        [properties]
+        android_api_level = 29
+        [binaries]
+        c = '${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang'
+        cpp = '${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang++'
+        ar = '${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar'
+        strip = '${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip'
+        pkgconfig = 'pkg-config'
+        EOF
+        meson setup build-android --cross-file ../android_cross.ini --buildtype=release -Dgallium-drivers='' -Dvulkan-drivers=panfrost -Dplatforms=android -Dandroid-stub=true -Dpanfrost-backend=kbase -Db_lto=true -Db_ndebug=true -Dprefix=/data/local/tmp -Dglx=disabled -Degl=disabled -Dgles1=disabled -Dgles2=disabled -Dosmesa=false -Dshared-glapi=disabled
+
+    - name: Build
+      run: |
+        cd mesa
+        ninja -C build-android src/panfrost/vulkan/libvulkan_panfrost.so
+        cp build-android/src/panfrost/vulkan/libvulkan_panfrost.so ../libvulkan_g615.so
+
+    - name: Package and upload
+      env:
+        NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
+      run: |
+        $NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip libvulkan_g615.so
+        mkdir eden_driver_bundle
+        cp libvulkan_g615.so eden_driver_bundle/
+        cp android/meta.json eden_driver_bundle/
+
+    - name: Upload Eden driver bundle
+      uses: actions/upload-artifact@v4
+      with:
+        name: mali-g615-vulkan-driver-eden
+        path: eden_driver_bundle/
+        retention-days: 30
