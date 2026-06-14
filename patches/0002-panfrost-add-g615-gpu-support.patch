@@ -1,0 +1,57 @@
+From: Mali G615 Open Driver Project
+Subject: [PATCH 2/3] panfrost: add Mali G615 MC6 GPU support
+
+Registers Mali G615 (product ID 0xa004) with the Panfrost GPU property
+and format support tables. Adds Valhall Gen2 shader model configuration
+with FP16 promotion, IDVS, and emulator-specific NIR fixups.
+
+---
+ src/panfrost/lib/pan_props.c            |  12 +
+ src/panfrost/lib/meson.build            |   1 +
+ src/panfrost/compiler/meson.build       |   1 +
+
+diff --git a/src/panfrost/lib/pan_props.c b/src/panfrost/lib/pan_props.c
+index 0000000..5555555 100644
+--- a/src/panfrost/lib/pan_props.c
++++ b/src/panfrost/lib/pan_props.c
+@@ -1,6 +1,7 @@
+ #include "pan_props.h"
+ #include "pan_device.h"
++#include "pan_g615_props.h"
+
+ void
+ pan_props_init(struct pan_device *dev)
+ {
+    uint32_t prod_id = dev->gpu_props->product_id;
+
++   /* Mali G615 MC6 — Valhall Gen2 CSF (MediaTek Dimensity 8300) */
++   if (prod_id == 0xa004 || prod_id == 0xa007) {
++      pan_g615_register_props(dev);
++      return;
++   }
++
+    /* existing GPU dispatch ... */
+
+diff --git a/src/panfrost/lib/meson.build b/src/panfrost/lib/meson.build
+index 0000000..6666666 100644
+--- a/src/panfrost/lib/meson.build
++++ b/src/panfrost/lib/meson.build
+@@ -10,6 +10,7 @@ libpanfrost_lib_files = files(
+   'pan_format.c',
+   'pan_image.c',
+   'pan_props.c',
++  'pan_g615_props.c',
+   'pan_texture.c',
+   'pan_tiler.c',
+ )
+
+diff --git a/src/panfrost/compiler/meson.build b/src/panfrost/compiler/meson.build
+index 0000000..7777777 100644
+--- a/src/panfrost/compiler/meson.build
++++ b/src/panfrost/compiler/meson.build
+@@ -12,6 +12,7 @@ bifrost_compiler_files = files(
+   'valhall/va_compiler.c',
+   'valhall/va_print.c',
+   'pan_compiler.c',
++  'pan_g615_shader.c',
+ )
