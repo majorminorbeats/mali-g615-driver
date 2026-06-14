@@ -1,0 +1,24 @@
+# Patch for drivers/gpu/drm/panthor/Makefile
+# Add panthor_g615.o and panthor_g615_mmu.o to the build
+#
+# Apply with: patch -p1 < Makefile.patch
+# (from the root of the Linux kernel tree)
+
+--- a/drivers/gpu/drm/panthor/Makefile
++++ b/drivers/gpu/drm/panthor/Makefile
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: GPL-2.0
+ panthor-y := \
+ 	panthor_device.o \
+ 	panthor_drv.o \
+ 	panthor_fw.o \
+ 	panthor_gem.o \
+ 	panthor_gpu.o \
+ 	panthor_heap.o \
+ 	panthor_mmu.o \
+-	panthor_sched.o
+ 	panthor_sched.o \
++	panthor_g615.o \
++	panthor_g615_mmu.o
+
+ obj-$(CONFIG_DRM_PANTHOR) += panthor.o
