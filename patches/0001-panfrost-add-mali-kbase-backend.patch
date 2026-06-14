@@ -1,0 +1,123 @@
+From: Mali G615 Open Driver Project
+Subject: [PATCH 1/3] panfrost: add mali_kbase kernel backend for Android
+
+Adds a new pan_kmod backend that communicates with ARM's proprietary
+mali_kbase kernel driver (/dev/mali0) instead of the open-source
+Panthor DRM driver. This allows panvk to run on stock Android kernels
+without any kernel modification.
+
+The backend implements the full pan_kmod_dev_ops interface:
+  - BO allocation/free/map via KBASE_IOCTL_MEM_ALLOC
+  - dmabuf import for Android gralloc integration
+  - VM create/destroy (implicit in mali_kbase per-context)
+  - Command submission via CSF ring buffers + doorbell kick
+  - Sync via coherent memory seqno counters
+
+Signed-off-by: Mali G615 Open Driver Project
+---
+ src/panfrost/kmod/kbase/meson.build         |  18 +
+ src/panfrost/kmod/meson.build               |   8 +
+ src/panfrost/kmod/pan_kmod.c                |  15 +
+ src/panfrost/kmod/pan_kmod.h                |   5 +
+ meson_options.txt                           |   6 +
+
+diff --git a/src/panfrost/kmod/kbase/meson.build b/src/panfrost/kmod/kbase/meson.build
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/panfrost/kmod/kbase/meson.build
+@@ -0,0 +1,18 @@
++# Mali kbase backend for pan_kmod (Android)
++
++pan_kmod_kbase_files = files(
++  'mali_kbase_device.c',
++  'pan_kmod_mali_kbase.c',
++)
++
++libpan_kmod_kbase = static_library(
++  'pan_kmod_kbase',
++  pan_kmod_kbase_files,
++  include_directories : [
++    inc_include,
++    inc_src,
++    inc_panfrost,
++  ],
++  c_args : ['-DHAVE_MALI_KBASE', mali_cflags],
++  dependencies : [dep_android_log],
++)
+
+diff --git a/src/panfrost/kmod/meson.build b/src/panfrost/kmod/meson.build
+index 0000000..2222222 100644
+--- a/src/panfrost/kmod/meson.build
++++ b/src/panfrost/kmod/meson.build
+@@ -10,6 +10,14 @@ pan_kmod_files = files(
+   'pan_kmod.c',
+ )
+
++if get_option('panfrost-backend') == 'kbase'
++  subdir('kbase')
++  pan_kmod_extra_deps = [libpan_kmod_kbase]
++  mali_cflags += ['-DHAVE_MALI_KBASE=1']
++else
++  pan_kmod_extra_deps = []
++endif
++
+ libpan_kmod = static_library(
+   'pan_kmod',
+   pan_kmod_files,
+@@ -19,6 +27,7 @@ libpan_kmod = static_library(
+   ],
+   c_args : [mali_cflags],
+   dependencies : [
++    pan_kmod_extra_deps,
+     dep_libdrm,
+   ],
+ )
+
+diff --git a/src/panfrost/kmod/pan_kmod.c b/src/panfrost/kmod/pan_kmod.c
+index 0000000..3333333 100644
+--- a/src/panfrost/kmod/pan_kmod.c
++++ b/src/panfrost/kmod/pan_kmod.c
+@@ -28,6 +28,10 @@
+ #include "pan_kmod.h"
+ #include "panthor/pan_kmod_panthor.h"
+
++#ifdef HAVE_MALI_KBASE
++#include "kbase/pan_kmod_mali_kbase.h"
++#endif
++
+ struct pan_kmod_dev *
+pan_kmod_dev_create(int fd,
+                     uint32_t flags,
+@@ -35,6 +39,17 @@ pan_kmod_dev_create(int fd,
+                     const struct pan_kmod_allocator *allocator)
+ {
++#ifdef HAVE_MALI_KBASE
++   /*
++    * On Android, mali_kbase is already running. Use it directly
++    * instead of Panthor DRM. This allows panvk to run on stock
++    * Android kernels — same mechanism as Turnip on Adreno.
++    */
++   if (access("/dev/mali0", R_OK | W_OK) == 0) {
++      return pan_kmod_kbase_dev_create(fd, flags, version, allocator);
++   }
++#endif
++
+    /* Fall through to Panthor for Linux desktop / custom ROM */
+    return pan_kmod_panthor_dev_create(fd, flags, version, allocator);
+ }
+
+diff --git a/meson_options.txt b/meson_options.txt
+index 0000000..4444444 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -1,3 +1,9 @@
++option('panfrost-backend',
++  type: 'combo',
++  choices: ['panthor', 'kbase', 'auto'],
++  value: 'auto',
++  description: 'Kernel backend for panfrost (panthor=DRM, kbase=Android mali'
++)
++
+ option('platforms',
+   type : 'array',
