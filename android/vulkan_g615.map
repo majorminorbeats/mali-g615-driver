@@ -1,0 +1,9 @@
+/* Linker version script — only these symbols exported from libvulkan_g615.so */
+{
+    global:
+        vk_icdGetInstanceProcAddr;
+        vk_icdGetPhysicalDeviceProcAddr;
+        vk_icdNegotiateLoaderICDInterfaceVersion;
+    local:
+        *;  /* everything else hidden */
+};
