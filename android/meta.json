@@ -1,0 +1,9 @@
+{
+    "schemaVersion": 1,
+    "name": "Mali G615 MC6 Open Driver",
+    "description": "Open-source Vulkan driver for Mali G615 MC6 (Valhall Gen2 CSF) on MediaTek Dimensity 8300. Optimized for Switch emulation via Eden.",
+    "vendor": "Mali G615 Open Driver Project",
+    "driverVersion": "1.0.0",
+    "minApi": 29,
+    "libraryName": "libvulkan_g615.so"
+}
